@@ -71,10 +71,23 @@ impl MoveSeq {
         }
         self.0.push_back(m);
     }
-    pub fn pop_front_if_eq(&mut self, family: &str) {
+    pub fn pop_front_if_fam(&mut self, family: &str) {
         if self.first().is_some_and(|m| m.quantum.family == family) {
             self.0.pop_front();
         }
+    }
+    pub fn pop_front_if_matches(&mut self, moves: &MoveSeq) -> bool {
+        let mut self_iter = self.0.iter();
+        for m in moves.iter() {
+            if self_iter.next().is_none_or(|s| s != m) {
+                return false;
+            }
+        }
+
+        for _ in 0..moves.len() {
+            self.0.pop_front();
+        }
+        true
     }
     pub fn first(&self) -> Option<&Move> {
         self.0.iter().next()
@@ -83,7 +96,17 @@ impl MoveSeq {
         for node in &alg.nodes {
             match node {
                 AlgNode::MoveNode(m) => self.push_back(m.clone()),
-                AlgNode::GroupingNode(grouping) => self.extend_from_alg(&grouping.alg),
+                AlgNode::GroupingNode(grouping) if grouping.amount.is_positive() => {
+                    for _ in 0..grouping.amount {
+                        self.extend_from_alg(&grouping.alg);
+                    }
+                }
+                AlgNode::GroupingNode(grouping) if grouping.amount.is_negative() => {
+                    let a = grouping.alg.invert();
+                    for _ in 0..grouping.amount.abs() {
+                        self.extend_from_alg(&a);
+                    }
+                }
                 AlgNode::CommutatorNode(commutator) => {
                     self.extend_from_alg(&commutator.a);
                     self.extend_from_alg(&commutator.b);
