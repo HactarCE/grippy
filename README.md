@@ -21,6 +21,8 @@ Grip theoretic twisty puzzle algorithm analysis tool
 [[R L: U2], U]          // U2 comm (RKT parity for 3^4)
 ```
 
+Grouping, commutators, and conjugates are all allowed.
+
 ## Example relations
 
 ```
@@ -35,4 +37,7 @@ U = F * [R: U'] F
 R = F * U' R' F
 ```
 
-The two leftmost characters are grips and after the `*` is a move sequence, which may be multiple moves and may use grouping/commutators/conjugates. `*` and `×` are both accepted as separators.
+- At the start of a line is is a grip
+- After `=` is a grip
+- After `*` is a move sequence, which may be multiple moves and may use grouping/commutators/conjugates
+- `*` and `×` are equivalent; both are accepted.
