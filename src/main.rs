@@ -15,12 +15,11 @@ const ZOOM: f32 = 1.5;
 
 const DEFAULT_ALG: &str = "[R, U] [U2, R]";
 const DEFAULT_RELATIONS: &str = "\
-    F = U @ R'\n\
-    U = F @ R\n\
-    R = U @ F\n\
-    U = R @ F'\n\
-    F = R @ U\n\
-    R = F @ U'\n\
+    U = F * R\n\
+    R = U * F\n\
+    F = R * U\n\
+    L = F * U\n\
+    F = U * L\n\
 ";
 
 fn main() -> eframe::Result {
@@ -76,9 +75,11 @@ impl App {
                     break;
                 }
 
-                let Some((rhs1, rhs2)) = rhs.trim().split_once('@') else {
+                let Some((rhs1, rhs2)) =
+                    Option::or_else(rhs.trim().split_once('*'), || rhs.trim().split_once('×'))
+                else {
                     self.relations_str_error =
-                        Some(format!("relation line {line:?} is missing '@'"));
+                        Some(format!("relation line {line:?} is missing '*' or '×'"));
                     break;
                 };
                 let old_grip_name = rhs1.trim().to_owned();
@@ -88,13 +89,24 @@ impl App {
                 }
 
                 match Alg::from_str(rhs2) {
-                    Ok(alg) => self.relations.push(Relation {
-                        new_grip_name,
-                        grip_to_replace: Grip {
-                            grip_name: old_grip_name,
-                            transform: MoveSeq::from_alg(&alg),
-                        },
-                    }),
+                    Ok(alg) => {
+                        // Add inverse relation
+                        self.relations.push(Relation {
+                            new_grip_name: old_grip_name.clone(),
+                            grip_to_replace: Grip {
+                                grip_name: new_grip_name.clone(),
+                                transform: MoveSeq::from_alg(&alg.invert()),
+                            },
+                        });
+                        // Add original relation
+                        self.relations.push(Relation {
+                            new_grip_name,
+                            grip_to_replace: Grip {
+                                grip_name: old_grip_name,
+                                transform: MoveSeq::from_alg(&alg),
+                            },
+                        });
+                    }
                     Err(e) => self.relations_str_error = Some(e.to_string()),
                 }
             }
@@ -263,7 +275,7 @@ impl fmt::Display for Grip {
         if self.transform.is_empty() {
             write!(f, "{grip_name}")
         } else {
-            write!(f, "{grip_name} @ ({transform})")
+            write!(f, "{grip_name} × ({transform})")
         }
     }
 }
