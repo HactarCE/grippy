@@ -22,6 +22,10 @@ const DEFAULT_RELATIONS: &str = "\
     F = U * L\n\
 ";
 
+const HOVERED_GRIP_INCLUDE_COLOR: egui::Color32 = egui::Color32::from_rgb(50, 160, 120);
+const HOVERED_GRIP_EXCLUDE_COLOR: egui::Color32 = egui::Color32::from_rgb(150, 100, 30);
+const HOVERED_REGION_COLOR: egui::Color32 = egui::Color32::from_rgb(10, 90, 255);
+
 fn main() -> eframe::Result {
     eframe::run_native(
         "Grippy",
@@ -43,6 +47,9 @@ struct App {
     regions: BTreeSet<Region>,
     grips: BTreeSet<Grip>,
     results: BTreeMap<MoveSeq, BTreeMap<Vec<bool>, Vec<Region>>>,
+
+    hovered_grip: Option<Grip>,
+    hovered_region: Option<Region>,
 }
 impl App {
     pub fn new(cc: &eframe::CreationContext) -> Self {
@@ -165,6 +172,61 @@ impl App {
             }
         }
     }
+
+    fn display_grip(
+        &self,
+        ui: &mut egui::Ui,
+        grip: &Grip,
+        exclude: bool,
+        default_color: egui::Color32,
+    ) -> egui::Response {
+        let color = if self.hovered_grip.as_ref() == Some(grip) {
+            if exclude {
+                HOVERED_GRIP_EXCLUDE_COLOR
+            } else {
+                HOVERED_GRIP_INCLUDE_COLOR
+            }
+        } else {
+            default_color
+        };
+        let text = if exclude {
+            format!("!{grip}")
+        } else {
+            grip.to_string()
+        };
+        ui.colored_label(color, text)
+    }
+    fn display_region(
+        &self,
+        ui: &mut egui::Ui,
+        region: &Region,
+        new_hovered_grip: &mut Option<Grip>,
+    ) -> egui::Response {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            let color = if self.hovered_region.as_ref() == Some(region) {
+                HOVERED_REGION_COLOR
+            } else {
+                ui.visuals().text_color()
+            };
+            ui.colored_label(color, "{");
+            let mut is_first = true;
+            let grips = itertools::chain(
+                region.include.iter().map(|g| (g, false)),
+                region.exclude.iter().map(|g| (g, true)),
+            );
+            for (g, exclude) in grips {
+                if !std::mem::take(&mut is_first) {
+                    ui.colored_label(color, ", ");
+                }
+                if self.display_grip(ui, g, exclude, color).contains_pointer() {
+                    *new_hovered_grip = Some(g.clone());
+                }
+            }
+            ui.colored_label(color, "}");
+        })
+        .response
+    }
 }
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -195,6 +257,9 @@ impl eframe::App for App {
             });
             ui.separator();
 
+            let mut new_hovered_grip = None;
+            let mut new_hovered_region = None;
+
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             ui.columns(3, |uis| {
                 egui::ScrollArea::new([true; 2])
@@ -203,7 +268,12 @@ impl eframe::App for App {
                     .show(&mut uis[0], |ui| {
                         ui.heading(format!("Grips ({})", self.grips.len()));
                         for g in &self.grips {
-                            ui.label(g.to_string());
+                            if self
+                                .display_grip(ui, g, false, ui.visuals().text_color())
+                                .contains_pointer()
+                            {
+                                new_hovered_grip = Some(g.clone());
+                            }
                         }
                     });
 
@@ -213,7 +283,12 @@ impl eframe::App for App {
                     .show(&mut uis[1], |ui| {
                         ui.heading(format!("Regions ({})", self.regions.len()));
                         for r in &self.regions {
-                            ui.label(r.to_string());
+                            if self
+                                .display_region(ui, r, &mut new_hovered_grip)
+                                .contains_pointer()
+                            {
+                                new_hovered_region = Some(r.clone());
+                            }
                         }
                     });
 
@@ -231,14 +306,8 @@ impl eframe::App for App {
                             ui.label(format!("Net move sequence: {move_seq_str}"));
                             for (move_mask, regions) in regions_by_move_seq {
                                 let mut job = egui::text::LayoutJob::default();
-                                let get_text_format = |color| {
-                                    egui::TextFormat::simple(
-                                        egui::FontId::proportional(13.0),
-                                        color,
-                                    )
-                                };
                                 let mut is_first = true;
-                                job.append("    ", 0.0, get_text_format(ui.visuals().text_color()));
+                                job.append("    ", 0.0, text_format(ui.visuals().text_color()));
                                 for (m, include) in self.moves.iter().zip(move_mask) {
                                     let pre = if is_first { "" } else { " " };
                                     is_first = false;
@@ -246,16 +315,28 @@ impl eframe::App for App {
                                         .visuals()
                                         .text_color()
                                         .gamma_multiply(if *include { 1.25 } else { 0.5 });
-                                    job.append(&format!("{pre}{m}"), 0.0, get_text_format(color));
+                                    job.append(&format!("{pre}{m}"), 0.0, text_format(color));
                                 }
                                 ui.label(job);
                                 for r in regions {
-                                    ui.label(format!("        {r}"));
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 0.0;
+                                        ui.label("        ");
+                                        if self
+                                            .display_region(ui, r, &mut new_hovered_grip)
+                                            .contains_pointer()
+                                        {
+                                            new_hovered_region = Some(r.clone());
+                                        }
+                                    });
                                 }
                             }
                         }
                     });
             });
+
+            self.hovered_grip = new_hovered_grip;
+            self.hovered_region = new_hovered_region;
         });
     }
 }
@@ -376,4 +457,8 @@ fn validate_grip_name(s: &str) -> Result<(), String> {
     } else {
         Err(format!("invalid grip {s:?}"))
     }
+}
+
+fn text_format(color: egui::Color32) -> egui::TextFormat {
+    egui::TextFormat::simple(egui::FontId::proportional(13.0), color)
 }
