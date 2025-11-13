@@ -60,14 +60,14 @@ impl MoveSeq {
         ret
     }
     pub fn push_back(&mut self, m: Move) {
-        if let Some(last) = self.0.iter_mut().last() {
-            if last.quantum.family == m.quantum.family {
-                last.amount += m.amount;
-                if last.amount == 0 {
-                    self.0.pop_back();
-                }
-                return;
+        if let Some(last) = self.0.iter_mut().last()
+            && last.quantum.family == m.quantum.family
+        {
+            last.amount += m.amount;
+            if last.amount == 0 {
+                self.0.pop_back();
             }
+            return;
         }
         self.0.push_back(m);
     }
